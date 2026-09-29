@@ -3,783 +3,506 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>活動報名系統 - 雲端同步版</title>
+    <title>活動報名系統</title>
+    <!-- 引入 Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 FontAwesome 圖示 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #f3f4f6;
-        }
-        .glass-panel {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-            border-top: 1px solid rgba(255, 255, 255, 0.5);
-            border-left: 1px solid rgba(255, 255, 255, 0.5);
-        }
-        @keyframes fillProgress { from { width: 0; } }
-        .progress-fill { transition: width 0.5s ease-in-out; }
+        body { font-family: 'PingFang TC', 'Microsoft JhengHei', sans-serif; background-color: #f3f4f6; }
+        .glass-panel { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2); }
+        .mask-overlay { position: absolute; inset: 0; background: rgba(255,255,255,0.85); backdrop-filter: blur(4px); z-index: 20; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; border-radius: 0.5rem; opacity: 0; pointer-events: none; transition: opacity 0.3s ease; }
+        .mask-overlay.active { opacity: 1; pointer-events: auto; }
+        .toast { position: fixed; bottom: 20px; right: 20px; transform: translateY(100px); opacity: 0; transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55); z-index: 100; }
+        .toast.show { transform: translateY(0); opacity: 1; }
+        /* 隱藏滾動條但保留功能 */
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     </style>
 </head>
-<body class="min-h-screen flex items-center justify-center p-4 sm:p-8 relative">
+<body class="min-h-screen text-gray-800 relative">
 
-    <button id="adminToggleBtn" class="fixed top-4 right-4 z-40 bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium flex items-center gap-2 transition-colors">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-        後台管理
-    </button>
+    <!-- 頂部導覽列 -->
+    <header class="bg-white shadow-sm sticky top-0 z-30">
+        <div class="max-w-6xl mx-auto px-4 py-3 flex justify-between items-center">
+            <h1 class="text-xl font-bold text-blue-600"><i class="fas fa-ticket-alt mr-2"></i>報名系統</h1>
+            <button onclick="openAdminLogin()" class="text-gray-500 hover:text-blue-600 transition text-sm flex items-center">
+                <i class="fas fa-cog mr-1"></i> 後台管理
+            </button>
+        </div>
+    </header>
 
-    <!-- Main Content Container -->
-    <div class="max-w-4xl w-full grid grid-cols-1 md:grid-cols-2 gap-8 items-start relative z-10">
+    <main class="max-w-6xl mx-auto px-4 py-8 relative">
+        <div class="flex flex-col md:flex-row gap-8">
+            
+            <!-- 左側：活動資訊與狀態 -->
+            <div class="w-full md:w-5/12 space-y-6">
+                <!-- 狀態卡片 -->
+                <div class="glass-panel rounded-2xl shadow-lg p-6 relative overflow-hidden">
+                    <h2 id="displayTitle" class="text-2xl font-bold mb-2">載入中...</h2>
+                    <p id="displayDesc" class="text-gray-600 text-sm mb-6 whitespace-pre-wrap">請稍候...</p>
+                    
+                    <div class="bg-blue-50 rounded-xl p-5 border border-blue-100">
+                        <div class="flex justify-between items-end mb-2">
+                            <span class="text-sm text-blue-800 font-medium"><i class="fas fa-users mr-1"></i>報名進度</span>
+                            <span class="text-2xl font-bold text-blue-600" id="progressText">0 / 0</span>
+                        </div>
+                        <!-- 進度條 -->
+                        <div class="w-full bg-gray-200 rounded-full h-3 mb-2 overflow-hidden">
+                            <div id="progressBar" class="bg-blue-500 h-3 rounded-full transition-all duration-1000 ease-out" style="width: 0%"></div>
+                        </div>
+                        <p id="timeStatusText" class="text-xs text-center font-medium mt-3 text-gray-500">檢查時間中...</p>
+                    </div>
+                </div>
+
+                <!-- 最新報名名單 -->
+                <div class="glass-panel rounded-2xl shadow-lg p-6">
+                    <h3 class="text-md font-bold mb-4 text-gray-700 border-b pb-2"><i class="fas fa-list-ul mr-2"></i>最新報名名單 (本地紀錄)</h3>
+                    <div id="registrationList" class="space-y-3 max-h-60 overflow-y-auto no-scrollbar">
+                        <div class="text-center text-gray-400 py-4 text-sm italic">尚無人報名</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 右側：報名表單 -->
+            <div class="w-full md:w-7/12">
+                <div class="glass-panel rounded-2xl shadow-lg p-6 md:p-8 relative min-h-[400px]">
+                    
+                    <!-- 狀態遮罩 -->
+                    <div id="formMask" class="mask-overlay active">
+                        <div id="maskIcon" class="text-5xl text-blue-500 mb-4"><i class="fas fa-spinner fa-spin"></i></div>
+                        <h3 id="maskTitle" class="text-2xl font-bold text-gray-800 mb-2">系統初始化中</h3>
+                        <p id="maskDesc" class="text-gray-500">請稍候...</p>
+                    </div>
+
+                    <h2 class="text-2xl font-bold mb-6 text-gray-800">填寫報名資料</h2>
+                    <form id="registrationForm" onsubmit="handleFormSubmit(event)" class="space-y-5">
+                        <div id="dynamicFormFields" class="space-y-5">
+                            <!-- 動態欄位會產生在這裡 -->
+                        </div>
+                        <button type="submit" id="submitBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl shadow-md transition-colors flex justify-center items-center mt-6">
+                            <span>確認報名</span>
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- ==================== 隱藏的後台介面 ==================== -->
+    <!-- 登入視窗 -->
+    <div id="loginModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center opacity-0 pointer-events-none transition-opacity">
+        <div class="bg-white rounded-2xl p-8 max-w-sm w-full mx-4 shadow-2xl transform scale-95 transition-transform" id="loginBox">
+            <h3 class="text-xl font-bold mb-2 text-center text-gray-800"><i class="fas fa-lock mr-2 text-blue-500"></i>管理員登入</h3>
+            <p class="text-sm text-gray-500 mb-6 text-center">請輸入密碼以進入後台設定</p>
+            <input type="password" id="adminPasswordInput" class="w-full border-gray-300 rounded-lg p-3 mb-4 focus:ring-2 focus:ring-blue-500 bg-gray-50" placeholder="輸入密碼 (預設: admin)">
+            <div class="flex gap-3">
+                <button onclick="closeAdminLogin()" class="w-1/2 py-2 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition">取消</button>
+                <button onclick="verifyPassword()" class="w-1/2 py-2 text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition font-medium">登入</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 後台設定面板 -->
+    <div id="adminPanel" class="fixed inset-y-0 right-0 w-full md:w-[450px] bg-white shadow-2xl z-40 transform translate-x-full transition-transform duration-300 flex flex-col">
+        <div class="p-5 border-b bg-gray-50 flex justify-between items-center">
+            <h2 class="text-xl font-bold text-gray-800"><i class="fas fa-cogs mr-2 text-blue-600"></i>系統管理後台</h2>
+            <button onclick="closeAdminPanel()" class="text-gray-400 hover:text-red-500 text-2xl p-2"><i class="fas fa-times"></i></button>
+        </div>
         
-        <!-- Left Column: Registration Info & Progress -->
-        <div class="glass-panel rounded-2xl p-6 sm:p-8 shadow-xl flex flex-col gap-6 h-full">
-            <div>
-                <h1 id="eventTitleDisplay" class="text-3xl font-bold text-gray-800 mb-2">載入中...</h1>
-                <p id="eventDescDisplay" class="text-gray-600 mb-6 whitespace-pre-line">請稍候，正在連線至雲端資料庫...</p>
-                
-                <div class="bg-gray-50 rounded-xl p-5 border border-gray-100 relative">
-                    <div id="loadingOverlay" class="absolute inset-0 bg-white/70 backdrop-blur-sm z-10 flex items-center justify-center rounded-xl">
-                        <svg class="animate-spin h-6 w-6 text-blue-500" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                    </div>
-                    
-                    <h2 class="text-lg font-semibold text-gray-700 mb-4 flex items-center gap-2">
-                        <svg class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
-                        報名狀況
-                    </h2>
-                    
-                    <div class="flex justify-between text-sm text-gray-500 mb-2">
-                        <span id="registeredCountText">已報名：0 人</span>
-                        <span id="limitCountText">上限：-- 人</span>
-                    </div>
-                    
-                    <div class="w-full bg-gray-200 rounded-full h-3 mb-2 overflow-hidden">
-                        <div id="progressBar" class="bg-blue-600 h-3 rounded-full progress-fill" style="width: 0%"></div>
-                    </div>
-                    
-                    <p id="statusMessage" class="text-sm font-medium text-blue-600 text-center mt-3">
-                        連線中...
-                    </p>
+        <div class="p-6 overflow-y-auto flex-1 space-y-8 bg-white no-scrollbar">
+            <!-- 1. 活動資訊設定 -->
+            <section>
+                <h3 class="font-bold text-gray-700 mb-3 border-l-4 border-blue-500 pl-2">活動基本資訊</h3>
+                <div class="space-y-3">
+                    <div><label class="text-sm text-gray-600">活動標題</label><input type="text" id="setEventTitle" class="w-full border rounded p-2 mt-1 bg-gray-50"></div>
+                    <div><label class="text-sm text-gray-600">活動說明</label><textarea id="setEventDesc" rows="3" class="w-full border rounded p-2 mt-1 bg-gray-50"></textarea></div>
                 </div>
-            </div>
+            </section>
 
-            <!-- Recent Registrants List -->
-            <div class="mt-auto pt-6 border-t border-gray-200">
-                 <h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4">最新報名名單</h3>
-                 <div class="h-40 overflow-y-auto no-scrollbar rounded-xl border border-gray-100 bg-white shadow-inner p-2" id="registrantList">
-                     <div class="flex items-center justify-center h-full text-sm text-gray-400 italic" id="emptyState">
-                         尚未有人報名
-                     </div>
-                 </div>
-            </div>
+            <!-- 2. 時間與人數設定 -->
+            <section>
+                <h3 class="font-bold text-gray-700 mb-3 border-l-4 border-blue-500 pl-2">報名限制設定</h3>
+                <div class="space-y-3">
+                    <div><label class="text-sm text-gray-600">報名人數上限</label><input type="number" id="setMaxCapacity" class="w-full border rounded p-2 mt-1 bg-gray-50" min="1"></div>
+                    <div><label class="text-sm text-gray-600">開始報名時間</label><input type="datetime-local" id="setStartTime" class="w-full border rounded p-2 mt-1 bg-gray-50"></div>
+                    <div><label class="text-sm text-gray-600">截止報名時間</label><input type="datetime-local" id="setEndTime" class="w-full border rounded p-2 mt-1 bg-gray-50"></div>
+                </div>
+            </section>
+
+            <!-- 3. 自訂表單欄位 -->
+            <section>
+                <h3 class="font-bold text-gray-700 mb-3 border-l-4 border-blue-500 pl-2">報名表單欄位</h3>
+                <div id="adminFieldsList" class="space-y-2 mb-3"></div>
+                <div class="bg-gray-100 p-3 rounded-lg border border-dashed border-gray-300">
+                    <div class="flex gap-2 mb-2">
+                        <input type="text" id="newFieldName" placeholder="欄位名稱 (如: 公司名稱)" class="w-1/2 p-1.5 border rounded text-sm">
+                        <select id="newFieldType" class="w-1/2 p-1.5 border rounded text-sm bg-white">
+                            <option value="text">單行文字</option><option value="email">Email</option><option value="tel">電話號碼</option><option value="textarea">多行備註</option>
+                        </select>
+                    </div>
+                    <div class="flex justify-between items-center mt-2">
+                        <label class="flex items-center text-sm text-gray-600"><input type="checkbox" id="newFieldRequired" class="mr-1" checked> 必填欄位</label>
+                        <button onclick="adminAddField()" class="bg-blue-100 text-blue-700 px-3 py-1 rounded text-sm hover:bg-blue-200 transition">+ 新增欄位</button>
+                    </div>
+                </div>
+            </section>
         </div>
 
-        <!-- Right Column: Registration Form -->
-        <div class="glass-panel rounded-2xl p-6 sm:p-8 shadow-xl relative overflow-hidden">
-            <!-- Dynamic Overlay (Full/Not Started/Ended) -->
-            <div id="fullOverlay" class="absolute inset-0 bg-white/80 backdrop-blur-sm z-10 hidden flex-col items-center justify-center p-6 text-center transition-all">
-                <div id="overlayIcon" class="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mb-4">
-                    <svg class="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
-                </div>
-                <h3 id="overlayTitle" class="text-2xl font-bold text-gray-800 mb-2">狀態變更</h3>
-                <p id="overlayDesc" class="text-gray-600">請稍候...</p>
-            </div>
-
-            <h2 class="text-2xl font-bold text-gray-800 mb-6">填寫報名資料</h2>
-            
-            <form id="registrationForm" class="space-y-5">
-                <div id="dynamicFieldsContainer" class="space-y-5">
-                    <!-- Loading Skeleton -->
-                    <div class="animate-pulse flex flex-col gap-4">
-                        <div class="h-10 bg-gray-200 rounded-xl"></div>
-                        <div class="h-10 bg-gray-200 rounded-xl"></div>
-                        <div class="h-10 bg-gray-200 rounded-xl"></div>
-                    </div>
-                </div>
-                
-                <div class="pt-4">
-                    <button type="submit" id="submitBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-xl shadow-lg shadow-blue-200 transition-all transform hover:-translate-y-0.5 flex justify-center items-center gap-2" disabled>
-                        <span>準備中...</span>
-                        <svg class="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                    </button>
-                </div>
-            </form>
+        <div class="p-4 bg-gray-50 border-t flex justify-between">
+            <button onclick="downloadCSV()" class="text-green-600 bg-green-100 hover:bg-green-200 px-4 py-2 rounded-lg font-medium transition text-sm"><i class="fas fa-file-excel mr-1"></i>匯出名單</button>
+            <button onclick="saveAdminSettings()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium transition shadow-md">儲存設定</button>
         </div>
     </div>
 
-    <!-- Admin Modal Overlay -->
-    <div id="adminModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden flex-col items-center justify-center p-4 sm:p-8 opacity-0 transition-opacity duration-300">
-        <div class="bg-white w-full max-w-5xl rounded-2xl shadow-2xl flex flex-col max-h-full overflow-hidden transform scale-95 transition-transform duration-300">
-            
-            <!-- Admin Header -->
-            <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
-                <h2 class="text-xl font-bold text-gray-800 flex items-center gap-2">
-                    <svg class="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-                    活動後台管理中心 (即時雲端同步)
-                </h2>
-                <button id="closeAdminBtn" class="text-gray-400 hover:text-gray-600 p-1">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                </button>
-            </div>
-            
-            <!-- Admin Body -->
-            <div class="p-6 overflow-y-auto flex-1 grid grid-cols-1 md:grid-cols-2 gap-8 bg-white">
-                <!-- Left: Field Manager -->
-                <div class="flex flex-col h-full">
-                    <h3 class="font-bold text-lg mb-4 text-gray-700 border-l-4 border-blue-500 pl-2">表單欄位設定</h3>
-                    <div id="adminFieldList" class="space-y-3 mb-6 flex-1 overflow-y-auto pr-2"></div>
-                    
-                    <div class="bg-blue-50 p-4 rounded-xl border border-blue-100 mt-auto">
-                        <h4 class="text-sm font-semibold text-blue-800 mb-3">新增自訂欄位</h4>
-                        <div class="space-y-3">
-                            <input type="text" id="newFieldLabel" placeholder="欄位名稱 (例如：餐飲偏好)" class="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-300">
-                            <div class="flex gap-2">
-                                <select id="newFieldType" class="flex-1 px-3 py-2 border rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-blue-300">
-                                    <option value="text">短文字 (Text)</option>
-                                    <option value="email">信箱 (Email)</option>
-                                    <option value="tel">電話 (Phone)</option>
-                                    <option value="number">數字 (Number)</option>
-                                </select>
-                                <label class="flex items-center gap-2 text-sm bg-white px-3 py-2 border rounded-lg cursor-pointer hover:bg-gray-50">
-                                    <input type="checkbox" id="newFieldRequired" class="rounded text-blue-600"> 必填
-                                </label>
-                            </div>
-                            <button id="addNewFieldBtn" class="w-full bg-blue-600 text-white text-sm font-medium py-2 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">新增加入</button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Right: Settings -->
-                <div class="flex flex-col gap-6">
-                    <div>
-                        <h3 class="font-bold text-lg mb-4 text-gray-700 border-l-4 border-yellow-500 pl-2">活動資訊設定</h3>
-                        <div class="space-y-3 bg-gray-50 p-4 rounded-xl border border-gray-200">
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">活動標題</label>
-                                <input type="text" id="adminEventTitleInput" class="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-300">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">活動說明</label>
-                                <textarea id="adminEventDescInput" rows="3" class="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-300"></textarea>
-                            </div>
-                            <div class="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700 mb-1">開放報名時間</label>
-                                    <input type="datetime-local" id="adminStartTimeInput" class="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-300">
-                                </div>
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700 mb-1">截止報名時間</label>
-                                    <input type="datetime-local" id="adminEndTimeInput" class="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-300">
-                                </div>
-                            </div>
-                            <button id="adminUpdateEventInfoBtn" class="w-full bg-gray-800 text-white px-4 py-2 rounded-lg text-sm hover:bg-gray-700 transition-colors">儲存活動資訊與時間至雲端</button>
-                        </div>
-                    </div>
-
-                    <div>
-                        <h3 class="font-bold text-lg mb-4 text-gray-700 border-l-4 border-green-500 pl-2">報名人數與資料</h3>
-                        <div class="space-y-3 bg-gray-50 p-4 rounded-xl border border-gray-200">
-                            <div class="flex items-center justify-between pb-3 border-b border-gray-200">
-                                <div>
-                                    <span class="block text-sm font-medium text-gray-800">人數上限</span>
-                                    <span class="block text-xs text-gray-500 mt-1">資料庫已收報名: <span id="adminCurrentCount" class="font-bold text-blue-600">0</span> 人</span>
-                                </div>
-                                <div class="flex items-center gap-2">
-                                    <input type="number" id="adminLimitInput" class="w-20 px-3 py-2 border rounded-lg text-center font-medium focus:ring-2 focus:ring-blue-300 outline-none" min="1">
-                                    <button id="adminUpdateLimitBtn" class="bg-gray-800 text-white px-4 py-2 rounded-lg text-sm hover:bg-gray-700 transition-colors">更新</button>
-                                </div>
-                            </div>
-                            
-                            <button id="exportCsvBtn" class="w-full flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white py-3 rounded-lg shadow-sm transition-colors text-sm font-medium">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                                匯出所有報名資料 (Excel CSV)
-                            </button>
-                            
-                            <button id="adminResetBtn" data-confirm="false" class="w-full flex items-center justify-center gap-2 bg-white hover:bg-red-50 text-red-600 border border-red-200 py-2.5 rounded-lg transition-colors text-sm font-medium">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                                清空資料庫所有報名資料
-                            </button>
-                        </div>
-                    </div>
-
-                    <div>
-                        <h3 class="font-bold text-lg mb-4 text-gray-700 border-l-4 border-red-500 pl-2">安全設定 (修改密碼)</h3>
-                        <div class="space-y-3 bg-red-50 p-4 rounded-xl border border-red-100">
-                            <input type="password" id="oldPasswordInput" placeholder="目前密碼" class="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-red-300">
-                            <input type="password" id="newPasswordInput" placeholder="新密碼 (至少4碼)" class="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-red-300">
-                            <input type="password" id="confirmNewPasswordInput" placeholder="再次輸入新密碼" class="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-red-300">
-                            <button id="updatePasswordBtn" class="w-full bg-red-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-red-700 transition-colors mt-2 font-medium">更新後台密碼至資料庫</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+    <!-- 自訂提示訊息 (Toast) -->
+    <div id="toast" class="toast bg-gray-800 text-white px-5 py-3 rounded-xl shadow-2xl flex items-center gap-3">
+        <i id="toastIcon" class="fas fa-check-circle text-green-400"></i>
+        <span id="toastMsg">訊息內容</span>
     </div>
 
-    <!-- Admin Password Modal -->
-    <div id="passwordModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] hidden flex-col items-center justify-center p-4 opacity-0 transition-opacity duration-300">
-        <div class="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-6 transform scale-95 transition-transform duration-300" id="passwordModalContent">
-            <h3 class="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-                <svg class="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
-                管理員登入
-            </h3>
-            <input type="password" id="adminPasswordInput" placeholder="請輸入管理員密碼" class="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 mb-5" autocomplete="off">
-            <div class="flex gap-3 justify-end">
-                <button id="cancelPasswordBtn" class="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-xl transition-colors">取消</button>
-                <button id="confirmPasswordBtn" class="px-4 py-2 text-sm font-medium bg-gray-800 text-white hover:bg-gray-700 rounded-xl transition-colors">確認登入</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Custom Notification System -->
-    <div id="notificationContainer" class="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none"></div>
-
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, getDoc, deleteDoc, updateDoc, onSnapshot, collection, addDoc, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-        // ==========================================
-        // ⚠️ 第 1 步：設定你的 Google Apps Script 網址
-        // ==========================================
+    <!-- ==================== 核心 JavaScript ==================== -->
+    <script>
+        // 🚨🚨🚨 請將這裡替換為您的 Google Apps Script 網頁應用程式網址 🚨🚨🚨
         const GAS_URL = 'https://script.google.com/macros/s/AKfycbzID7ATrZhMozNBtzrY2brthlkehAJVMgjyfTROZMGMMWebqxTkMad5o5CVtRyChR24/exec';
 
-        // ==========================================
-        // ⚠️ 第 2 步：設定你的 Firebase Config
-        // ==========================================
-        const appId = 'my-event-registration-app'; // 可以自行修改，這是資料庫內的集合前綴
-        let firebaseConfig = {
-            // 在這裡貼上你的 Firebase Config
-            // apiKey: "AIzaSy...",
-            // authDomain: "your-project.firebaseapp.com",
-            // projectId: "your-project",
-            // storageBucket: "your-project.firebasestorage.app",
-            // messagingSenderId: "123456789",
-            // appId: "1:123456789:web:abcdef"
-        };
-        
-        // (Canvas 環境預設支援，部署到 GitHub Pages 時請務必填寫上方 firebaseConfig)
-        try { 
-            if (typeof __firebase_config !== 'undefined' && __firebase_config) {
-                firebaseConfig = JSON.parse(__firebase_config); 
-            }
-        } catch(e) {}
-        
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
-
-        // ========== 系統全域變數 ==========
-        let state = {
-            adminPassword: 'admin', // 初始預設密碼
-            eventTitle: '2026 科技論壇',
-            eventDescription: '歡迎參加我們年度盛會！名額有限，請盡速報名。',
-            maxLimit: 50,
-            startTime: '',
+        // 系統預設狀態 (如果 localStorage 沒有資料時的預設值)
+        const DEFAULT_STATE = {
+            adminPassword: 'admin',
+            eventTitle: '2026 科技論壇報名',
+            eventDescription: '歡迎參加年度科技盛會！\n請填寫下方資料完成報名。',
+            maxCapacity: 50,
+            startTime: '', // 空白代表隨時可報名
             endTime: '',
             fields: [
-                { id: 'f_name', label: '姓名', type: 'text', required: true, isFixed: true },
-                { id: 'f_email', label: '電子郵件', type: 'email', required: true, isFixed: true },
-                { id: 'f_phone', label: '聯絡電話', type: 'tel', required: true, isFixed: true },
-                { id: 'f_company', label: '服務單位/學校', type: 'text', required: false, isFixed: false }
-            ]
+                { id: 'f_name', name: '真實姓名', type: 'text', required: true },
+                { id: 'f_phone', name: '聯絡電話', type: 'tel', required: true },
+                { id: 'f_email', name: '電子郵件', type: 'email', required: true }
+            ],
+            registrations: [] // 本地紀錄，實際備份在 Google Sheets
         };
-        let registrantsList = [];
-        let isAdminAuthenticated = false;
 
-        const form = document.getElementById('registrationForm');
-        const submitBtn = document.getElementById('submitBtn');
-        const dynamicFieldsContainer = document.getElementById('dynamicFieldsContainer');
-        const loadingOverlay = document.getElementById('loadingOverlay');
-        const progressBar = document.getElementById('progressBar');
-        const statusMessage = document.getElementById('statusMessage');
-        const fullOverlay = document.getElementById('fullOverlay');
-        const overlayIcon = document.getElementById('overlayIcon');
-        const overlayTitle = document.getElementById('overlayTitle');
-        const overlayDesc = document.getElementById('overlayDesc');
-        const registrantListDOM = document.getElementById('registrantList');
-        const emptyState = document.getElementById('emptyState');
-        const notificationContainer = document.getElementById('notificationContainer');
-        
-        // Admin DOM
-        const adminModal = document.getElementById('adminModal');
-        const passwordModal = document.getElementById('passwordModal');
-        const adminPasswordInput = document.getElementById('adminPasswordInput');
+        // 全域變數
+        let state = {};
+        let isAdminAuthed = false;
 
-        async function initSystem() {
-            try {
-                // 必須先進行匿名登入，才能讀寫 Firebase
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(auth);
-                }
-                
-                // 啟動資料庫監聽
-                setupFirestoreListeners();
-                
-                // 每分鐘更新一次時間狀態檢查
-                setInterval(updateUI, 60000); 
-            } catch (error) {
-                console.error("Firebase 連線失敗:", error);
-                showNotification("資料庫連線失敗，請檢查 Firebase 設定", "error");
-                document.getElementById('eventTitleDisplay').textContent = "系統連線錯誤";
-                document.getElementById('eventDescDisplay').textContent = "請確認已正確填寫 Firebase Config。";
-                loadingOverlay.style.display = 'none';
-            }
-        }
-
-        function setupFirestoreListeners() {
-            const configRef = doc(db, 'artifacts', appId, 'public', 'data', 'eventSettings', 'config');
-            const regsRef = collection(db, 'artifacts', appId, 'public', 'data', 'registrants');
-
-            // 監聽後台設定變更
-            onSnapshot(configRef, (docSnap) => {
-                if (docSnap.exists()) {
-                    state = { ...state, ...docSnap.data() };
-                } else {
-                    // 如果雲端沒有資料，寫入初始預設值
-                    setDoc(configRef, state);
-                }
-                loadingOverlay.style.display = 'none';
-                renderFormFields();
-                updateUI();
-            }, (err) => console.error(err));
-
-            // 監聽報名名單變更
-            onSnapshot(regsRef, (snapshot) => {
-                let temp = [];
-                snapshot.forEach(doc => {
-                    temp.push({ id: doc.id, ...doc.data() });
-                });
-                registrantsList = temp.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-                updateUI();
-                renderRegistrantList();
-            }, (err) => console.error(err));
-        }
-
-        async function saveConfigToCloud() {
-            try {
-                const configRef = doc(db, 'artifacts', appId, 'public', 'data', 'eventSettings', 'config');
-                await setDoc(configRef, state);
-                return true;
-            } catch (error) {
-                console.error(error);
-                showNotification("雲端儲存失敗", "error");
-                return false;
-            }
-        }
-
-        function renderFormFields() {
-            dynamicFieldsContainer.innerHTML = '';
+        // 1. 系統初始化
+        window.onload = () => {
+            loadState();
+            renderUI();
             
-            state.fields.forEach(field => {
-                const wrapper = document.createElement('div');
-                const reqStar = field.required ? '<span class="text-red-500 ml-1">*</span>' : '';
-                
-                wrapper.innerHTML = `
-                    <label for="${field.id}" class="block text-sm font-medium text-gray-700 mb-1">
-                        ${field.label} ${reqStar}
-                    </label>
-                    <input type="${field.type}" id="${field.id}" name="${field.label}" 
-                           ${field.required ? 'required' : ''} 
-                           class="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all" 
-                           placeholder="請輸入${field.label}">
-                `;
-                dynamicFieldsContainer.appendChild(wrapper);
+            // 監聽密碼輸入框的 Enter 鍵
+            document.getElementById('adminPasswordInput').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') verifyPassword();
             });
-            
-            renderAdminFieldsList();
+        };
+
+        // 2. 讀取與儲存本地狀態
+        function loadState() {
+            const saved = localStorage.getItem('regSystemState');
+            if (saved) {
+                state = JSON.parse(saved);
+                // 確保舊版本資料結構補全
+                if(!state.registrations) state.registrations = [];
+            } else {
+                state = JSON.parse(JSON.stringify(DEFAULT_STATE));
+                saveState();
+            }
+        }
+        function saveState() {
+            localStorage.setItem('regSystemState', JSON.stringify(state));
         }
 
-        function updateUI() {
-            const count = registrantsList.length;
-            const limit = state.maxLimit;
-            const percentage = limit > 0 ? Math.min((count / limit) * 100, 100) : 100;
-            const isFull = count >= limit;
+        // 3. 渲染前端介面
+        function renderUI() {
+            // 文字資訊
+            document.getElementById('displayTitle').innerText = state.eventTitle;
+            document.getElementById('displayDesc').innerText = state.eventDescription;
 
-            // 同步文字
-            document.getElementById('eventTitleDisplay').textContent = state.eventTitle;
-            document.getElementById('eventDescDisplay').textContent = state.eventDescription;
-            document.getElementById('registeredCountText').textContent = `已報名：${count} 人`;
-            document.getElementById('limitCountText').textContent = `上限：${limit} 人`;
+            // 報名人數與進度條
+            const currentCount = state.registrations.length;
+            document.getElementById('progressText').innerText = `${currentCount} / ${state.maxCapacity}`;
+            let percent = (currentCount / state.maxCapacity) * 100;
+            if(percent > 100) percent = 100;
+            const bar = document.getElementById('progressBar');
+            bar.style.width = `${percent}%`;
+            bar.className = `h-3 rounded-full transition-all duration-1000 ease-out ${percent >= 100 ? 'bg-red-500' : (percent >= 80 ? 'bg-yellow-400' : 'bg-blue-500')}`;
 
-            // 同步後台設定框
-            document.getElementById('adminEventTitleInput').value = state.eventTitle;
-            document.getElementById('adminEventDescInput').value = state.eventDescription;
-            document.getElementById('adminStartTimeInput').value = state.startTime || '';
-            document.getElementById('adminEndTimeInput').value = state.endTime || '';
-            document.getElementById('adminLimitInput').value = limit;
-            document.getElementById('adminCurrentCount').textContent = count;
+            // 產生動態表單
+            const formContainer = document.getElementById('dynamicFormFields');
+            formContainer.innerHTML = '';
+            state.fields.forEach(f => {
+                let inputHtml = '';
+                const baseClass = "w-full border-gray-300 rounded-lg shadow-sm p-3 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-gray-50 transition";
+                if (f.type === 'textarea') {
+                    inputHtml = `<textarea id="${f.id}" name="${f.name}" class="${baseClass}" rows="3" ${f.required?'required':''}></textarea>`;
+                } else {
+                    inputHtml = `<input type="${f.type}" id="${f.id}" name="${f.name}" class="${baseClass}" ${f.required?'required':''}>`;
+                }
+                formContainer.innerHTML += `
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">${f.name} ${f.required ? '<span class="text-red-500">*</span>':''}</label>
+                        ${inputHtml}
+                    </div>
+                `;
+            });
 
-            // 時間與額滿邏輯判斷
+            // 渲染本地名單
+            const listDiv = document.getElementById('registrationList');
+            if (currentCount === 0) {
+                listDiv.innerHTML = '<div class="text-center text-gray-400 py-4 text-sm italic">尚無人報名</div>';
+            } else {
+                listDiv.innerHTML = '';
+                // 顯示最新 5 筆
+                [...state.registrations].reverse().slice(0, 5).forEach(reg => {
+                    // 找出姓名欄位 (假設第一個文字欄位是姓名)
+                    const nameKey = state.fields[0].name;
+                    let displayName = reg[nameKey] || '匿名';
+                    if (displayName.length >= 2) {
+                        displayName = displayName.charAt(0) + '○' + (displayName.length > 2 ? displayName.slice(-1) : '');
+                    }
+                    listDiv.innerHTML += `
+                        <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-100">
+                            <div class="flex items-center"><div class="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold mr-3">${displayName.charAt(0)}</div><span class="font-medium text-gray-700">${displayName}</span></div>
+                            <span class="text-xs text-gray-400">${new Date(reg._timestamp).toLocaleDateString()}</span>
+                        </div>
+                    `;
+                });
+            }
+
+            checkFormStatus();
+        }
+
+        // 4. 檢查時間與名額狀態 (控制遮罩)
+        function checkFormStatus() {
+            const mask = document.getElementById('formMask');
+            const maskIcon = document.getElementById('maskIcon');
+            const maskTitle = document.getElementById('maskTitle');
+            const maskDesc = document.getElementById('maskDesc');
+            const timeTxt = document.getElementById('timeStatusText');
+            
             const now = new Date().getTime();
             const start = state.startTime ? new Date(state.startTime).getTime() : 0;
             const end = state.endTime ? new Date(state.endTime).getTime() : Infinity;
-            
-            let blockReason = null;
-            if (start > 0 && now < start) blockReason = 'not_started';
-            else if (end !== Infinity && now > end) blockReason = 'ended';
-            else if (isFull) blockReason = 'full';
+            const currentCount = state.registrations.length;
 
-            progressBar.style.width = `${percentage}%`;
-            progressBar.className = 'h-3 rounded-full progress-fill ';
-            
-            // 處理遮罩狀態
-            if (blockReason) {
-                progressBar.classList.add(blockReason === 'full' ? 'bg-red-500' : 'bg-gray-400');
-                fullOverlay.classList.remove('hidden');
-                fullOverlay.classList.add('flex');
-                submitBtn.disabled = true;
-                submitBtn.classList.add('opacity-50', 'cursor-not-allowed');
-
-                if (blockReason === 'not_started') {
-                    overlayIcon.innerHTML = `<svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>`;
-                    overlayTitle.textContent = '報名尚未開始';
-                    overlayDesc.textContent = `預計開放時間：${new Date(state.startTime).toLocaleString('zh-TW', {month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit'})}`;
-                    statusMessage.textContent = '尚未開放報名';
-                } else if (blockReason === 'ended') {
-                    overlayIcon.innerHTML = `<svg class="w-8 h-8 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>`;
-                    overlayTitle.textContent = '報名已截止';
-                    overlayDesc.textContent = '本次活動報名時間已結束，感謝您的參與。';
-                    statusMessage.textContent = '報名已截止';
-                } else {
-                    overlayIcon.innerHTML = `<svg class="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>`;
-                    overlayTitle.textContent = '報名已額滿';
-                    overlayDesc.textContent = '非常感謝您的支持，本次活動名額已滿。';
-                    statusMessage.textContent = '已額滿，感謝支持！';
-                }
+            if (start && now < start) {
+                mask.className = 'mask-overlay active bg-white/90';
+                maskIcon.innerHTML = '<i class="fas fa-clock"></i>';
+                maskIcon.className = 'text-5xl text-yellow-500 mb-4';
+                maskTitle.innerText = '報名尚未開始';
+                maskDesc.innerText = `開放時間：${new Date(state.startTime).toLocaleString()}`;
+                timeTxt.innerText = `即將於 ${new Date(state.startTime).toLocaleString()} 開放`;
+            } else if (end && now > end) {
+                mask.className = 'mask-overlay active bg-white/90';
+                maskIcon.innerHTML = '<i class="fas fa-calendar-times"></i>';
+                maskIcon.className = 'text-5xl text-gray-500 mb-4';
+                maskTitle.innerText = '報名已截止';
+                maskDesc.innerText = '感謝您的關注，活動已結束報名。';
+                timeTxt.innerText = '報名已結束';
+            } else if (currentCount >= state.maxCapacity) {
+                mask.className = 'mask-overlay active bg-white/90';
+                maskIcon.innerHTML = '<i class="fas fa-user-slash"></i>';
+                maskIcon.className = 'text-5xl text-red-500 mb-4';
+                maskTitle.innerText = '名額已滿';
+                maskDesc.innerText = '非常抱歉，本次活動報名已額滿。';
+                timeTxt.innerText = '報名已額滿';
+                document.getElementById('progressBar').classList.add('bg-red-500');
             } else {
-                fullOverlay.classList.add('hidden');
-                fullOverlay.classList.remove('flex');
-                submitBtn.disabled = false;
-                submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
-                submitBtn.innerHTML = `<span>送出報名</span><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>`;
-
-                if (percentage < 60) {
-                    progressBar.classList.add('bg-blue-500');
-                    statusMessage.className = 'text-sm font-medium text-blue-600 text-center mt-3';
-                    statusMessage.textContent = '開放報名中！';
-                } else if (percentage < 90) {
-                    progressBar.classList.add('bg-yellow-500');
-                    statusMessage.className = 'text-sm font-medium text-yellow-600 text-center mt-3';
-                    statusMessage.textContent = '名額即將額滿，請盡速報名！';
+                mask.className = 'mask-overlay';
+                if(end !== Infinity) {
+                    timeTxt.innerText = `截止時間：${new Date(state.endTime).toLocaleString()}`;
                 } else {
-                    progressBar.classList.add('bg-red-500');
-                    statusMessage.className = 'text-sm font-medium text-red-600 text-center mt-3';
-                    statusMessage.textContent = '最後幾個名額！';
+                    timeTxt.innerText = '報名開放中';
                 }
             }
         }
 
-        form.addEventListener('submit', async function(e) {
+        // 5. 處理表單送出 (傳送至 GAS)
+        async function handleFormSubmit(e) {
             e.preventDefault();
-            if (!auth.currentUser) return showNotification('資料庫連線中，請稍候再試', 'error');
             
-            if (registrantsList.length >= state.maxLimit) {
-                showNotification('抱歉，名額已滿。', 'error');
-                return;
+            // 再次檢查狀態防堵
+            if (state.registrations.length >= state.maxCapacity) {
+                showToast('報名失敗：名額已滿', 'error'); return;
             }
 
-            const collectedData = {};
-            let hasEmptyRequired = false;
+            const btn = document.getElementById('submitBtn');
+            const originalBtnHtml = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> 寫入資料中...';
+            btn.disabled = true;
 
-            state.fields.forEach(field => {
-                const input = document.getElementById(field.id);
-                if (input) {
-                    const val = input.value.trim();
-                    collectedData[field.label] = val; 
-                    if (field.required && !val) hasEmptyRequired = true;
-                }
+            // 收集資料
+            let formData = { _timestamp: new Date().toISOString() };
+            state.fields.forEach(f => {
+                formData[f.name] = document.getElementById(f.id).value;
             });
-
-            if (hasEmptyRequired) {
-                showNotification('請檢查所有必填欄位。', 'error');
-                return;
-            }
-
-            submitBtn.disabled = true;
-            submitBtn.innerHTML = `<svg class="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span>資料寫入雲端中...</span>`;
-
-            const payload = {
-                id: 'R' + Date.now().toString().slice(-6),
-                timestamp: new Date().toISOString(),
-                formData: collectedData 
-            };
 
             try {
-                // 1. 寫入 Firebase 即時資料庫
-                const regsRef = collection(db, 'artifacts', appId, 'public', 'data', 'registrants');
-                await addDoc(regsRef, payload);
-
-                // 2. 備份寫入 Google 試算表 (GAS)
-                if (GAS_URL && GAS_URL.includes('/exec')) {
-                    fetch(GAS_URL, {
-                        method: 'POST',
-                        body: JSON.stringify(payload),
-                        headers: { 'Content-Type': 'text/plain;charset=utf-8' }
-                    }).catch(err => console.log('GAS Backup failed, but DB saved.', err));
-                }
-                
-                form.reset();
-                showNotification('報名成功！資料已同步。', 'success');
-            } catch (error) {
-                console.error('Submission failed:', error);
-                showNotification('寫入資料庫失敗，請重試。', 'error');
-                submitBtn.disabled = false;
-                submitBtn.innerHTML = `<span>送出報名</span><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>`;
-            }
-        });
-
-        function renderRegistrantList() {
-            if (registrantsList.length === 0) {
-                emptyState.style.display = 'flex';
-                Array.from(registrantListDOM.children).forEach(c => { if (c.id !== 'emptyState') c.remove(); });
-                return;
-            }
-            emptyState.style.display = 'none';
-            Array.from(registrantListDOM.children).forEach(c => { if (c.id !== 'emptyState') c.remove(); });
-
-            const reversedList = [...registrantsList].reverse();
-            reversedList.forEach((person, index) => {
-                const item = document.createElement('div');
-                item.className = 'p-3 mb-2 bg-gray-50 rounded-lg border border-gray-100 flex items-center justify-between';
-                
-                let rawName = person.formData['姓名'] || Object.values(person.formData)[0] || '匿名';
-                let maskedName = rawName.length > 2 ? rawName.charAt(0) + 'O'.repeat(rawName.length - 2) + rawName.charAt(rawName.length - 1) : (rawName.length === 2 ? rawName.charAt(0) + 'O' : rawName);
-                
-                const date = new Date(person.timestamp);
-                const timeStr = `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
-
-                item.innerHTML = `
-                    <div class="flex items-center gap-3 overflow-hidden">
-                        <div class="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs shrink-0">${registrantsList.length - index}</div>
-                        <div class="truncate">
-                            <p class="text-sm font-semibold text-gray-700 truncate">${maskedName}</p>
-                            <p class="text-xs text-gray-500 truncate">${person.formData['服務單位/學校'] || person.formData['服務單位'] || '已完成報名'}</p>
-                        </div>
-                    </div>
-                    <span class="text-xs text-gray-400 bg-white px-2 py-1 rounded-md border shrink-0 ml-2">${timeStr}</span>
-                `;
-                registrantListDOM.appendChild(item);
-            });
-        }
-
-        document.getElementById('adminToggleBtn').addEventListener('click', () => {
-            if (isAdminAuthenticated) {
-                adminModal.classList.remove('hidden');
-                adminModal.classList.add('flex');
-                setTimeout(() => adminModal.classList.remove('opacity-0'), 10);
-            } else {
-                adminPasswordInput.value = '';
-                passwordModal.classList.remove('hidden');
-                passwordModal.classList.add('flex');
-                setTimeout(() => { passwordModal.classList.remove('opacity-0'); adminPasswordInput.focus(); }, 10);
-            }
-        });
-
-        document.getElementById('confirmPasswordBtn').addEventListener('click', verifyAdmin);
-        adminPasswordInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') verifyAdmin(); });
-        document.getElementById('cancelPasswordBtn').addEventListener('click', () => {
-            passwordModal.classList.add('opacity-0');
-            setTimeout(() => { passwordModal.classList.add('hidden'); passwordModal.classList.remove('flex'); }, 300);
-        });
-        document.getElementById('closeAdminBtn').addEventListener('click', () => {
-            adminModal.classList.add('opacity-0');
-            setTimeout(() => { adminModal.classList.add('hidden'); adminModal.classList.remove('flex'); }, 300);
-        });
-
-        function verifyAdmin() {
-            if (adminPasswordInput.value === state.adminPassword) {
-                isAdminAuthenticated = true;
-                passwordModal.classList.add('opacity-0');
-                setTimeout(() => {
-                    passwordModal.classList.add('hidden');
-                    passwordModal.classList.remove('flex');
-                    document.getElementById('adminToggleBtn').click(); // 開啟後台
-                }, 300);
-            } else {
-                showNotification('密碼錯誤', 'error');
-                adminPasswordInput.value = '';
-            }
-        }
-
-        // 修改活動資訊與時間
-        document.getElementById('adminUpdateEventInfoBtn').addEventListener('click', async () => {
-            state.eventTitle = document.getElementById('adminEventTitleInput').value.trim();
-            state.eventDescription = document.getElementById('adminEventDescInput').value.trim();
-            state.startTime = document.getElementById('adminStartTimeInput').value;
-            state.endTime = document.getElementById('adminEndTimeInput').value;
-            
-            if (state.startTime && state.endTime && new Date(state.startTime) >= new Date(state.endTime)) {
-                return showNotification('截止時間必須晚於開放時間', 'error');
-            }
-
-            if (await saveConfigToCloud()) showNotification('活動資訊與時間已同步至雲端', 'success');
-        });
-
-        // 修改人數上限
-        document.getElementById('adminUpdateLimitBtn').addEventListener('click', async () => {
-            const limit = parseInt(document.getElementById('adminLimitInput').value, 10);
-            if (limit > 0) {
-                state.maxLimit = limit;
-                if (await saveConfigToCloud()) showNotification(`上限更新為 ${limit} 人`, 'success');
-            }
-        });
-
-        // 修改管理員密碼
-        document.getElementById('updatePasswordBtn').addEventListener('click', async () => {
-            const oldPw = document.getElementById('oldPasswordInput').value;
-            const newPw = document.getElementById('newPasswordInput').value;
-            const confPw = document.getElementById('confirmNewPasswordInput').value;
-
-            if (oldPw !== state.adminPassword) return showNotification('舊密碼錯誤', 'error');
-            if (newPw.length < 4) return showNotification('新密碼長度需至少 4 個字元', 'error');
-            if (newPw !== confPw) return showNotification('兩次輸入的新密碼不一致', 'error');
-
-            state.adminPassword = newPw;
-            if (await saveConfigToCloud()) {
-                showNotification('密碼已成功更新至資料庫！', 'success');
-                document.getElementById('oldPasswordInput').value = '';
-                document.getElementById('newPasswordInput').value = '';
-                document.getElementById('confirmNewPasswordInput').value = '';
-            }
-        });
-
-        // 清空資料庫
-        const resetBtn = document.getElementById('adminResetBtn');
-        resetBtn.addEventListener('click', async () => {
-            if (resetBtn.dataset.confirm === 'true') {
-                resetBtn.innerHTML = '<svg class="animate-spin w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> 刪除雲端資料中...';
-                try {
-                    const regsRef = collection(db, 'artifacts', appId, 'public', 'data', 'registrants');
-                    const snapshot = await getDocs(regsRef);
-                    const deletePromises = [];
-                    snapshot.forEach(d => deletePromises.push(deleteDoc(d.ref)));
-                    await Promise.all(deletePromises);
-                    showNotification('雲端報名資料已全數清空', 'info');
-                } catch (e) {
-                    showNotification('刪除失敗', 'error');
-                }
-                resetBtn.dataset.confirm = 'false';
-                resetBtn.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg> 清空資料庫所有報名資料`;
-            } else {
-                resetBtn.dataset.confirm = 'true';
-                resetBtn.innerHTML = `⚠️ 確認清空？(再次點擊)`;
-                setTimeout(() => {
-                    resetBtn.dataset.confirm = 'false';
-                    resetBtn.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg> 清空資料庫所有報名資料`;
-                }, 3000);
-            }
-        });
-
-        document.getElementById('addNewFieldBtn').addEventListener('click', async () => {
-            const label = document.getElementById('newFieldLabel').value.trim();
-            if (!label) return showNotification('請輸入欄位名稱', 'error');
-            if (state.fields.some(f => f.label === label)) return showNotification('欄位已存在', 'error');
-
-            state.fields.push({
-                id: 'field_' + Date.now().toString(36),
-                label: label,
-                type: document.getElementById('newFieldType').value,
-                required: document.getElementById('newFieldRequired').checked,
-                isFixed: false
-            });
-            if (await saveConfigToCloud()) {
-                document.getElementById('newFieldLabel').value = '';
-                showNotification('欄位已新增同步', 'success');
-            }
-        });
-
-        window.removeField = async function(fieldId, btnElem) {
-            if (btnElem.dataset.confirm === 'true') {
-                state.fields = state.fields.filter(f => f.id !== fieldId);
-                if (await saveConfigToCloud()) showNotification('欄位已從雲端移除', 'info');
-            } else {
-                const originalHtml = btnElem.innerHTML;
-                btnElem.dataset.confirm = 'true';
-                btnElem.innerHTML = '<span class="text-xs bg-red-600 text-white px-2 py-1 rounded shadow">確認刪除</span>';
-                setTimeout(() => {
-                    btnElem.dataset.confirm = 'false';
-                    btnElem.innerHTML = originalHtml;
-                }, 3000);
-            }
-        };
-
-        function renderAdminFieldsList() {
-            const list = document.getElementById('adminFieldList');
-            list.innerHTML = '';
-            state.fields.forEach((field, i) => {
-                const item = document.createElement('div');
-                item.className = 'flex items-center justify-between p-3 bg-gray-50 border border-gray-200 rounded-lg';
-                item.innerHTML = `
-                    <div class="flex items-center gap-3">
-                        <span class="text-gray-400 font-mono text-sm">${i + 1}.</span>
-                        <span class="font-medium text-gray-800">${field.label}</span>
-                        ${field.required ? '<span class="px-2 py-0.5 text-xs bg-red-100 text-red-700 rounded font-medium">必填</span>' : ''}
-                    </div>
-                    <div>
-                        ${!field.isFixed ? `<button onclick="removeField('${field.id}', this)" data-confirm="false" class="text-red-500 hover:bg-red-50 p-1 rounded transition-colors"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>` : '<span class="text-xs text-gray-400 px-2">預設</span>'}
-                    </div>
-                `;
-                list.appendChild(item);
-            });
-        }
-
-        document.getElementById('exportCsvBtn').addEventListener('click', () => {
-            if (registrantsList.length === 0) return showNotification('目前沒有資料', 'info');
-            
-            // 抓出所有曾經出現過的欄位 (避免動態欄位消失)
-            const allHeaders = new Set();
-            registrantsList.forEach(r => Object.keys(r.formData || {}).forEach(k => allHeaders.add(k)));
-            const headerArray = ['報名時間', '報名序號', ...Array.from(allHeaders)];
-            
-            // 寫入 BOM 防止中文亂碼
-            let csvContent = '\uFEFF' + headerArray.join(',') + '\n';
-            
-            registrantsList.forEach(reg => {
-                const localTime = new Date(reg.timestamp).toLocaleString('zh-TW', { hour12: false });
-                const row = [ `"${localTime}"`, `"${reg.id}"` ];
-                
-                Array.from(allHeaders).forEach(key => {
-                    let val = (reg.formData && reg.formData[key]) ? reg.formData[key] : '';
-                    row.push(`"${val.toString().replace(/"/g, '""')}"`); // 處理資料內若有逗號或雙引號
+                // 1. 傳送至 Google Apps Script
+                const response = await fetch(GAS_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify(formData)
                 });
-                csvContent += row.join(',') + '\n';
-            });
+                const result = await response.json();
 
-            // 觸發下載
-            const link = document.createElement("a");
-            link.href = URL.createObjectURL(new Blob([csvContent], { type: 'text/csv;charset=utf-8;' }));
-            link.download = `雲端報名名單_${Date.now()}.csv`;
-            link.click();
-            showNotification('CSV 匯出成功', 'success');
-        });
-
-        function showNotification(message, type = 'success') {
-            const notif = document.createElement('div');
-            notif.className = 'transform transition-all duration-300 translate-y-10 opacity-0 px-4 py-3 rounded-xl shadow-lg border flex items-center gap-3 w-80 text-sm font-medium z-[110] pointer-events-auto';
-            if (type === 'success') {
-                notif.classList.add('bg-green-50', 'border-green-200', 'text-green-800');
-                notif.innerHTML = `<svg class="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><span>${message}</span>`;
-            } else if (type === 'error') {
-                notif.classList.add('bg-red-50', 'border-red-200', 'text-red-800');
-                notif.innerHTML = `<svg class="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><span>${message}</span>`;
-            } else {
-                notif.classList.add('bg-blue-50', 'border-blue-200', 'text-blue-800');
-                notif.innerHTML = `<svg class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg><span>${message}</span>`;
+                if (result.status === 'success') {
+                    // 2. 寫入本地紀錄以更新 UI
+                    state.registrations.push(formData);
+                    saveState();
+                    renderUI();
+                    document.getElementById('registrationForm').reset();
+                    showToast('報名成功！資料已寫入雲端。', 'success');
+                } else {
+                    throw new Error(result.message);
+                }
+            } catch (error) {
+                console.error(error);
+                showToast('寫入失敗，請稍後再試。', 'error');
+            } finally {
+                btn.innerHTML = originalBtnHtml;
+                btn.disabled = false;
             }
-            notificationContainer.appendChild(notif);
-            requestAnimationFrame(() => notif.classList.remove('translate-y-10', 'opacity-0'));
-            setTimeout(() => {
-                notif.classList.add('translate-y-10', 'opacity-0');
-                setTimeout(() => notif.remove(), 300);
-            }, 3000);
         }
 
-        // 啟動系統
-        initSystem();
+        // ==================== 後台管理邏輯 ====================
+        
+        function openAdminLogin() {
+            if (isAdminAuthed) {
+                openAdminPanel();
+            } else {
+                const modal = document.getElementById('loginModal');
+                const box = document.getElementById('loginBox');
+                modal.classList.remove('opacity-0', 'pointer-events-none');
+                box.classList.remove('scale-95');
+                document.getElementById('adminPasswordInput').value = '';
+                document.getElementById('adminPasswordInput').focus();
+            }
+        }
+
+        function closeAdminLogin() {
+            const modal = document.getElementById('loginModal');
+            const box = document.getElementById('loginBox');
+            modal.classList.add('opacity-0', 'pointer-events-none');
+            box.classList.add('scale-95');
+        }
+
+        function verifyPassword() {
+            const input = document.getElementById('adminPasswordInput').value;
+            if (input === state.adminPassword) {
+                isAdminAuthed = true;
+                closeAdminLogin();
+                openAdminPanel();
+                showToast('登入成功', 'success');
+            } else {
+                showToast('密碼錯誤', 'error');
+            }
+        }
+
+        function openAdminPanel() {
+            document.getElementById('adminPanel').classList.remove('translate-x-full');
+            // 載入設定到表單
+            document.getElementById('setEventTitle').value = state.eventTitle;
+            document.getElementById('setEventDesc').value = state.eventDescription;
+            document.getElementById('setMaxCapacity').value = state.maxCapacity;
+            document.getElementById('setStartTime').value = state.startTime;
+            document.getElementById('setEndTime').value = state.endTime;
+            renderAdminFields();
+        }
+
+        function closeAdminPanel() {
+            document.getElementById('adminPanel').classList.add('translate-x-full');
+        }
+
+        function renderAdminFields() {
+            const list = document.getElementById('adminFieldsList');
+            list.innerHTML = '';
+            state.fields.forEach((f, index) => {
+                list.innerHTML += `
+                    <div class="flex justify-between items-center bg-white p-2 border rounded shadow-sm text-sm">
+                        <div>
+                            <span class="font-bold text-gray-700">${f.name}</span>
+                            <span class="text-xs text-gray-400 ml-2">[${f.type}] ${f.required?'必填':'選填'}</span>
+                        </div>
+                        <button onclick="adminRemoveField(${index})" class="text-red-500 hover:bg-red-50 p-1 rounded"><i class="fas fa-trash"></i></button>
+                    </div>
+                `;
+            });
+        }
+
+        function adminAddField() {
+            const name = document.getElementById('newFieldName').value.trim();
+            const type = document.getElementById('newFieldType').value;
+            const req = document.getElementById('newFieldRequired').checked;
+            if (!name) { showToast('請輸入欄位名稱', 'error'); return; }
+            state.fields.push({ id: 'f_' + Date.now(), name: name, type: type, required: req });
+            document.getElementById('newFieldName').value = '';
+            renderAdminFields();
+        }
+
+        function adminRemoveField(index) {
+            if(confirm('確定要刪除此欄位嗎？')) {
+                state.fields.splice(index, 1);
+                renderAdminFields();
+            }
+        }
+
+        function saveAdminSettings() {
+            state.eventTitle = document.getElementById('setEventTitle').value;
+            state.eventDescription = document.getElementById('setEventDesc').value;
+            state.maxCapacity = parseInt(document.getElementById('setMaxCapacity').value) || 50;
+            state.startTime = document.getElementById('setStartTime').value;
+            state.endTime = document.getElementById('setEndTime').value;
+            
+            saveState();
+            renderUI();
+            closeAdminPanel();
+            showToast('設定已儲存更新', 'success');
+        }
+
+        function downloadCSV() {
+            if (state.registrations.length === 0) {
+                showToast('目前沒有資料可匯出', 'error'); return;
+            }
+            let csvContent = "data:text/csv;charset=utf-8,\uFEFF"; // 加上 BOM 解決中文亂碼
+            // 標題
+            const headers = ['報名時間', ...state.fields.map(f => f.name)];
+            csvContent += headers.join(",") + "\r\n";
+            // 內容
+            state.registrations.forEach(row => {
+                let rowData = [new Date(row._timestamp).toLocaleString()];
+                state.fields.forEach(f => {
+                    let val = row[f.name] || '';
+                    val = val.replace(/"/g, '""'); // 處理引號
+                    rowData.push(`"${val}"`);
+                });
+                csvContent += rowData.join(",") + "\r\n";
+            });
+            
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", "報名名單.csv");
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            showToast('匯出成功', 'success');
+        }
+
+        // 提示訊息工具
+        function showToast(msg, type = 'info') {
+            const toast = document.getElementById('toast');
+            const icon = document.getElementById('toastIcon');
+            document.getElementById('toastMsg').innerText = msg;
+            
+            if (type === 'success') { icon.className = 'fas fa-check-circle text-green-400'; } 
+            else if (type === 'error') { icon.className = 'fas fa-exclamation-circle text-red-400'; }
+            
+            toast.classList.add('show');
+            setTimeout(() => { toast.classList.remove('show'); }, 3000);
+        }
     </script>
 </body>
 </html>
