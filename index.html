@@ -95,11 +95,11 @@
     <div id="loginModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center opacity-0 pointer-events-none transition-opacity">
         <div class="bg-white rounded-2xl p-8 max-w-sm w-full mx-4 shadow-2xl transform scale-95 transition-transform" id="loginBox">
             <h3 class="text-xl font-bold mb-2 text-center text-gray-800"><i class="fas fa-lock mr-2 text-blue-500"></i>管理員登入</h3>
-            <p class="text-sm text-gray-500 mb-6 text-center">請輸入密碼以進入後台設定</p>
-            <input type="password" id="adminPasswordInput" class="w-full border-gray-300 rounded-lg p-3 mb-4 focus:ring-2 focus:ring-blue-500 bg-gray-50" placeholder="輸入密碼 (預設: admin)">
+            <p class="text-sm text-gray-500 mb-6 text-center">請輸入後端設定之安全密碼</p>
+            <input type="password" id="adminPasswordInput" class="w-full border-gray-300 rounded-lg p-3 mb-4 focus:ring-2 focus:ring-blue-500 bg-gray-50" placeholder="請輸入密碼">
             <div class="flex gap-3">
                 <button onclick="closeAdminLogin()" class="w-1/2 py-2 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition">取消</button>
-                <button onclick="verifyPassword()" class="w-1/2 py-2 text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition font-medium">登入</button>
+                <button id="loginBtn" onclick="verifyPassword()" class="w-1/2 py-2 text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition font-medium">登入</button>
             </div>
         </div>
     </div>
@@ -167,9 +167,8 @@
         // 🚨🚨🚨 請將這裡替換為您的 Google Apps Script 網頁應用程式網址 🚨🚨🚨
         const GAS_URL = 'https://script.google.com/macros/s/AKfycbzID7ATrZhMozNBtzrY2brthlkehAJVMgjyfTROZMGMMWebqxTkMad5o5CVtRyChR24/exec';
 
-        // 系統預設狀態 (如果 localStorage 沒有資料時的預設值)
+        // 系統預設狀態 (移除了前端密碼，密碼改存於 GAS 後端)
         const DEFAULT_STATE = {
-            adminPassword: 'admin',
             eventTitle: '2026 科技論壇報名',
             eventDescription: '歡迎參加年度科技盛會！\n請填寫下方資料完成報名。',
             maxCapacity: 50,
@@ -256,7 +255,6 @@
                 listDiv.innerHTML = '';
                 // 顯示最新 5 筆
                 [...state.registrations].reverse().slice(0, 5).forEach(reg => {
-                    // 找出姓名欄位 (假設第一個文字欄位是姓名)
                     const nameKey = state.fields[0].name;
                     let displayName = reg[nameKey] || '匿名';
                     if (displayName.length >= 2) {
@@ -323,7 +321,6 @@
         async function handleFormSubmit(e) {
             e.preventDefault();
             
-            // 再次檢查狀態防堵
             if (state.registrations.length >= state.maxCapacity) {
                 showToast('報名失敗：名額已滿', 'error'); return;
             }
@@ -333,14 +330,12 @@
             btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> 寫入資料中...';
             btn.disabled = true;
 
-            // 收集資料
             let formData = { _timestamp: new Date().toISOString() };
             state.fields.forEach(f => {
                 formData[f.name] = document.getElementById(f.id).value;
             });
 
             try {
-                // 1. 傳送至 Google Apps Script
                 const response = await fetch(GAS_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -349,7 +344,6 @@
                 const result = await response.json();
 
                 if (result.status === 'success') {
-                    // 2. 寫入本地紀錄以更新 UI
                     state.registrations.push(formData);
                     saveState();
                     renderUI();
@@ -389,21 +383,44 @@
             box.classList.add('scale-95');
         }
 
-        function verifyPassword() {
+        // 全新向 GAS 請求驗證密碼的邏輯
+        async function verifyPassword() {
             const input = document.getElementById('adminPasswordInput').value;
-            if (input === state.adminPassword) {
-                isAdminAuthed = true;
-                closeAdminLogin();
-                openAdminPanel();
-                showToast('登入成功', 'success');
-            } else {
-                showToast('密碼錯誤', 'error');
+            if (!input) return;
+
+            const btn = document.getElementById('loginBtn');
+            const originalText = btn.innerText;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 驗證中...';
+            btn.disabled = true;
+
+            try {
+                const response = await fetch(GAS_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({ action: 'verifyPassword', password: input })
+                });
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    isAdminAuthed = true;
+                    closeAdminLogin();
+                    openAdminPanel();
+                    showToast('登入成功', 'success');
+                    document.getElementById('adminPasswordInput').value = ''; 
+                } else {
+                    showToast(result.message || '密碼錯誤', 'error');
+                }
+            } catch (error) {
+                console.error(error);
+                showToast('驗證失敗，請檢查網路連線', 'error');
+            } finally {
+                btn.innerText = originalText;
+                btn.disabled = false;
             }
         }
 
         function openAdminPanel() {
             document.getElementById('adminPanel').classList.remove('translate-x-full');
-            // 載入設定到表單
             document.getElementById('setEventTitle').value = state.eventTitle;
             document.getElementById('setEventDesc').value = state.eventDescription;
             document.getElementById('setMaxCapacity').value = state.maxCapacity;
@@ -466,16 +483,14 @@
             if (state.registrations.length === 0) {
                 showToast('目前沒有資料可匯出', 'error'); return;
             }
-            let csvContent = "data:text/csv;charset=utf-8,\uFEFF"; // 加上 BOM 解決中文亂碼
-            // 標題
+            let csvContent = "data:text/csv;charset=utf-8,\uFEFF"; 
             const headers = ['報名時間', ...state.fields.map(f => f.name)];
             csvContent += headers.join(",") + "\r\n";
-            // 內容
             state.registrations.forEach(row => {
                 let rowData = [new Date(row._timestamp).toLocaleString()];
                 state.fields.forEach(f => {
                     let val = row[f.name] || '';
-                    val = val.replace(/"/g, '""'); // 處理引號
+                    val = val.replace(/"/g, '""'); 
                     rowData.push(`"${val}"`);
                 });
                 csvContent += rowData.join(",") + "\r\n";
